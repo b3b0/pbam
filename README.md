@@ -2,7 +2,7 @@
 ## PowerShell Bitlocker Administration &amp; Monitoring - a little tool to report on Bitlocker status.
 
 ![alt text](https://i.imgur.com/5mPp8G8.png "PBAM!")
-
+![alt text](https://i.imgur.com/Gt04j34.png "PBAM!")
 -----------------------------------
 ## Requirements
 - Windows environment (obvious)
