@@ -1,4 +1,4 @@
-# PBAM
+# ｐｂａｍ
 ## PowerShell Bitlocker Administration &amp; Monitoring - a little tool to report on Bitlocker status.
 
 ![alt text](https://i.imgur.com/5mPp8G8.png "PBAM!")
