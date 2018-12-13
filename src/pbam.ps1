@@ -14,6 +14,7 @@ $cache = "$installdir\.btlckr_cache"
 $exepath = "$installdir\lib\wkhtmltopdf.exe"
 $configpath = "$installdir\conf\pbam.conf"
 $configargs = Get-Content $configpath
+$tempout = "$cache\tmpout.tmp"
 
 if (! (Test-Path $cache))
 {
@@ -24,7 +25,7 @@ if (! (Test-Path $configpath))
 {
     New-Item -ItemType file -Path $configpath | Out-Null
 }
-
+#DT-89RQ942
 # random filename variables - it's done this way because the filenames are not important
 
 $randomdatacache = [guid]::NewGuid()
@@ -134,6 +135,73 @@ function puller($arbi)
     python $installdir\lib\pdffer.py $outhtml $outpdf $exepath
     
     $waiter.Close()
+}
+
+function informer
+{
+    # clean the output box
+
+    $OutputBox.Clear()
+
+    # searchterm is whatever is in the "Specific" box when the button is smashed
+
+    $informterm = $specificTextBox.Text
+
+    if (Test-Connection $informterm -Count 1 -Quiet) # do this stuff if it's pingable
+    {
+        $result = (manage-bde -status c: -computername $informterm)
+        if ($result | Select-String "Protection Off")
+        {
+            $OutputBox.text += "`r`n" + $result
+            $OutputBox.text += "`r`n" + "----------------------------------------------------"
+            $OutputBox.text += "`r`n" + "$informterm doesn't have Bitlocker enabled at all." # tell us that the device has nothing local
+            $Outputbox.text += "`r`n" + (Get-Content $outfile | Select-String $informterm) # show us what AD has too
+        }
+        if ($result | Select-String "Protection On")
+        {
+            $OutputBox.text += "`r`n" + $result
+            $OutputBox.text += "`r`n" + "----------------------------------------------------"
+            $OutputBox.text += "`r`n" + "$informterm has Bitlocker enabled locally. Has it been pushed to AD?" # yes, it has bitlocker enabled locally.
+            $OutputBox.text += "`r`n" + "Checking on it!" 
+            $Outputbox.text += "`r`n" + (Get-Content $outfile | Select-String $informterm) # tell us what AD has.
+            if (Get-Content $outfile | Select-String $informterm | Select-String "none") # if it has nothing, do the following. 
+            {
+                # create a pop-up window to ask us whether or not we wanna try to inject the recovery keys into AD.
+                
+                $a = new-object -comobject wscript.shell
+                $intAnswer = $a.popup("Attempt to push keys to AD?",0,"Attempt to push keys to AD?",4)
+                If ($intAnswer -eq 6) # if we say yes/ok
+                {
+                    if (-not (Test-Path "\\$informterm\c$\bitlocker-enforcement"))
+                    {
+                        # if there's not a staging directory for our script make it and put the scipt there too
+
+                        New-Item -ItemType "directory" "\\$informterm\c$\bitlocker-enforcement"
+                        Copy-Item -Path $installdir\lib\keypusher.ps1 -Destination "\\$informterm\c$\bitlocker-enforcement"
+                    }
+                    if (Test-Path "\\$informterm\c$\bitlocker-enforcement")
+                    {
+                        # if there's a staging directory for our script put the script there
+                        
+                        Copy-Item -Path $installdir\lib\keypusher.ps1 -Destination "\\$informterm\c$\bitlocker-enforcement"
+                    }
+                    if (Test-Path "\\$informterm\c$\bitlocker-enforcement")
+                    {
+                        # now use psexec to try and shoot it into AD.
+
+                        psexec.exe \\$informterm cmd /c 'powershell -executionpolicy bypass -file "C:\bitlocker-enforcement\keypusher.ps1"'
+                    }
+                    
+                }
+            }
+        }
+    }
+    else # if it's not pingable just tell us what AD has.
+    {
+        $OutputBox.text += "`r`n" + "$informterm doesn't appear to be pingable right now. Cannot check locally, but will return what AD has."
+        $Outputbox.text += "`r`n" + (Get-Content $outfile | Select-String $informterm)
+        $OutputBox.text += "`r`n" + "If $infoterm has any results, they would be on the line above this."
+    }
 }
 
 #click function to return information
@@ -291,8 +359,29 @@ $runButton.width                   = 60
 $runButton.height                  = 30
 $runButton.location                = New-Object System.Drawing.Point(630,33)
 $runButton.Font                    = 'Microsoft Sans Serif,10'
-$MainWindow.controls.AddRange(@($OutputBox,$enabledButton,$disabledButton,$specificButton,$specificTextBox,$reportButton,$runButton))
+
+$informButton                         = New-Object system.Windows.Forms.Button
+$informButton.text                    = "Inform"
+$informButton.width                   = 60
+$informButton.height                  = 30
+$informButton.location                = New-Object System.Drawing.Point(630,0)
+$informButton.Font                    = 'Microsoft Sans Serif,10'
+
+$refreshButton                         = New-Object system.Windows.Forms.Button
+$refreshButton.text                    = "Refresh"
+$refreshButton.width                   = 60
+$refreshButton.height                  = 25
+$refreshButton.location                = New-Object System.Drawing.Point(630,66)
+$refreshButton.Font                    = 'Microsoft Sans Serif,10'
+
+$MainWindow.controls.AddRange(@($OutputBox,$enabledButton,$disabledButton,$specificButton,$specificTextBox,$reportButton,$runButton,$informButton,$refreshButton))
 $runButton.Add_Click({go})
+$informButton.Add_Click({informer})
+$refreshButton.Add_Click(
+    {
+        Remove-Item -Path "$cache\*" -Recurse -Force
+        puller(1)
+    })
 
 # if there's SOMETHING in the $configpath then let's get crackin' - if not warn the user to put something into it.
 
